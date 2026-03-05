@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POS CLOUD SYNC VERSION</title>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore-compat.js"></script>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        :root { --mlbb: #8e44ad; --transfer: #27ae60; --dark: #1e272e; --bg: #f4f6f9; --primary: #3f51b5; --danger: #ff4757; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); padding: 10px; margin: 0; padding-bottom: 80px; }
+        .container { max-width: 500px; margin: auto; }
+        
+        /* PIN Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 20px; width: 80%; max-width: 300px; text-align: center; }
+        
+        .owner-section { background: var(--dark); color: white; padding: 20px; border-radius: 20px; margin-bottom: 15px; display: none; }
+        .total-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 15px; }
+        .mini-card { background: rgba(255,255,255,0.1); padding: 10px; border-radius: 10px; text-align: center; font-size: 10px; }
+        
+        .card { background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 20px; position: relative; }
+        .lock-overlay { display: none; background: rgba(255,255,255,0.98); position: absolute; top:0; left:0; width:100%; height:100%; z-index: 100; border-radius: 20px; align-items: center; justify-content: center; flex-direction: column; text-align: center; }
+        
+        .history-card { background: white; border-radius: 18px; padding: 15px; margin-bottom: 12px; border-left: 5px solid var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .date-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .detail-box { display: none; padding-top: 10px; margin-top: 10px; border-top: 1px solid #f0f0f0; }
+        .detail-item { font-size: 13px; display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dashed #eee; }
+
+        label { font-size: 11px; font-weight: bold; color: var(--primary); }
+        select, input { width: 100%; padding: 12px; margin: 5px 0 12px 0; border-radius: 10px; border: 1px solid #ddd; box-sizing: border-box; }
+        .main-btn { width: 100%; padding: 15px; background: var(--primary); color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; }
+        
+        .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; justify-content: space-around; padding: 10px 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1000; }
+        .nav-item { border: none; background: none; color: #7f8c8d; cursor: pointer; display: flex; flex-direction: column; align-items: center; font-size: 12px; }
+        .nav-item.active { color: var(--primary); }
+        .hidden { display: none; }
+        .del-icon { color: var(--danger); font-size: 18px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="pinModal" class="modal">
+    <div class="modal-content">
+        <h3 style="margin-top:0;">Admin Access</h3>
+        <input type="password" id="pinInput" placeholder="••••••" style="text-align:center; font-size:24px; letter-spacing: 5px; width:100%; margin-bottom:15px; padding:10px; border-radius:10px; border:1px solid #ddd;">
+        <div style="display:flex; gap:10px;">
+            <button onclick="closeModal()" style="flex:1; padding:12px; border-radius:10px; border:1px solid #ddd; background:#eee;">Cancel</button>
+            <button onclick="checkPin()" style="flex:1; padding:12px; border-radius:10px; background:var(--primary); color:white; border:none; font-weight:bold;">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <button onclick="openPinModal('dashboard')" id="adminEntryBtn" style="width:100%; padding:10px; border-radius:10px; border:1px dashed var(--primary); background:none; color:var(--primary); font-weight:bold; margin-bottom:15px;">Admin Dashboard ဖွင့်ရန်</button>
+
+    <div id="ownerPanel" class="owner-section">
+        <div style="display:flex; justify-content: space-between; align-items:center;">
+            <h3>Insights</h3>
+            <button onclick="closeDashboard()" style="color:white; background:none; border:none;"><span class="material-icons">close</span></button>
+        </div>
+        <div style="text-align:center; margin:15px 0;">
+            <small>ယနေ့အသားတင်အမြတ်</small>
+            <h1 id="netProfit" style="margin:0; color:#2ecc71;">0 K</h1>
+        </div>
+        <div class="total-grid">
+            <div class="mini-card"><small>SALES</small><br><b id="totalSale">0</b></div>
+            <div class="mini-card"><small>PROFIT</small><br><b id="totalProfit">0</b></div>
+            <div class="mini-card" style="background:var(--danger)"><small>EXPENSE</small><br><b id="totalExp">0</b></div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:15px;">
+            <button onclick="updateCloudLock(true)" style="background:var(--danger); color:white; border:none; padding:12px; border-radius:10px; font-weight:bold;">🔴 စာရင်းပိတ်</button>
+            <button onclick="updateCloudLock(false)" style="background:#2e86de; color:white; border:none; padding:12px; border-radius:10px; font-weight:bold;">🔵 စာရင်းဖွင့်</button>
+        </div>
+    </div>
+
+    <div id="posSection">
+        <div class="card" id="formArea">
+            <div id="lockOverlay" class="lock-overlay">
+                <span class="material-icons" style="font-size:45px; color:var(--danger);">lock</span>
+                <p style="font-weight:bold;">ဆိုင်စာရင်းပိတ်ထားပါသည်</p>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1;"><label>SC RATE</label><input type="number" id="scRate" oninput="saveAndCalc()"></div>
+                <div style="flex:1;"><label>CATEGORY</label>
+                    <select id="mainType" onchange="toggleFields()">
+                        <option value="MLBB">💎 MLBB</option>
+                        <option value="Transfer">💸 Money</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="mlbbGroup">
+                <label>PACK (Normal & 2X)</label>
+                <select id="diaPack" onchange="updateCost()">
+                    <option value="0" data-sc="0">-- ရွေးပါ --</option>
+                    <optgroup label="Weekly & Twilight">
+                        <option value="Weekly Pass" data-sc="76">Weekly Pass</option>
+                        <option value="Twilight Pass" data-sc="402.5">Twilight Pass</option>
+                    </optgroup>
+                    <optgroup label="Diamonds Pack">
+                        <option value="86 Dia" data-sc="61.5">86 Dia</option>
+                        <option value="172 Dia" data-sc="122">172 Dia</option>
+                        <option value="257 Dia" data-sc="177.5">257 Dia</option>
+                        <option value="343 Dia" data-sc="239">343 Dia</option>
+                        <option value="429 Dia" data-sc="299.5">429 Dia</option>
+                        <option value="514 Dia" data-sc="355">514 Dia</option>
+                        <option value="600 Dia" data-sc="416.5">600 Dia</option>
+                        <option value="706 Dia" data-sc="480">706 Dia</option>
+                        <option value="878 Dia" data-sc="602">878 Dia</option>
+                        <option value="1050 Dia" data-sc="724">1050 Dia</option>
+                        <option value="2195 Dia" data-sc="1453">2195 Dia</option>
+                        <option value="3688 Dia" data-sc="2424">3688 Dia</option>
+                        <option value="5532 Dia" data-sc="3660">5532 Dia</option>
+                        <option value="9288 Dia" data-sc="6079">9288 Dia</option>
+                    </optgroup>
+                    <optgroup label="2X Bonus Pack">
+                        <option value="50+50 Dia" data-sc="39">50+50 Dia</option>
+                        <option value="150+150 Dia" data-sc="116.9">150+150 Dia</option>
+                        <option value="250+250 Dia" data-sc="187.5">250+250 Dia</option>
+                        <option value="500+500 Dia" data-sc="385">500+500 Dia</option>
+                    </optgroup>
+                </select>
+                <input type="text" id="playerId" placeholder="Customer name">
+            </div>
+
+            <div id="transferGroup" class="hidden">
+                <label>BANK & WALLET</label>
+                <select id="bankName">
+                    <option value="KPay">KPay</option>
+                    <option value="WavePay">WavePay</option>
+                    <option value="KBZ Bank">KBZ Bank</option>
+                    <option value="CB Bank/Pay">CB Bank/Pay</option>
+                    <option value="AYA Bank/Pay">AYA Bank/Pay</option>
+                    <option value="Yoma Bank">Yoma Bank</option>
+                    <option value="uabpay">uabpay</option>
+                    <option value="OK$">OK$</option>
+                    <option value="Mytel Pay">Mytel Pay</option>
+                </select>
+                <select id="transferAction"><option value="လွှဲ">လွှဲ (Out)</option><option value="ထုတ်">ထုတ် (In)</option></select>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1;"><label>အရင်း</label><input type="number" id="cost" placeholder="0"></div>
+                <div style="flex:1;"><label>ရောင်းဈေး</label><input type="number" id="sale" placeholder="0"></div>
+            </div>
+            <button onclick="saveData()" class="main-btn">SAVE TRANSACTION</button>
+        </div>
+        
+        <div id="secureHistoryArea" style="display:none;">
+            <h4 style="margin: 20px 0 10px 5px;">အရောင်းမှတ်တမ်း (Floating Cards)</h4>
+            <div id="smartHistory"></div>
+        </div>
+    </div>
+
+    <div id="expenseSection" class="hidden">
+        <div class="card">
+            <h3 style="margin:0; color:var(--danger);">အသုံးစရိတ် စာရင်းသွင်း</h3>
+            <input type="number" id="expAmount" placeholder="ပမာဏ">
+            <input type="text" id="expNote" placeholder="အကြောင်းအရာ">
+            <button onclick="saveExpense()" class="main-btn" style="background:var(--danger);">SAVE EXPENSE</button>
+        </div>
+    </div>
+</div>
+
+<div class="bottom-nav">
+    <button class="nav-item active" onclick="switchTab('pos')" id="posTab"><span class="material-icons">point_of_sale</span><span>POS</span></button>
+    <button class="nav-item" onclick="openPinModal('expense')" id="expTab"><span class="material-icons">receipt_long</span><span>EXPENSE</span></button>
+</div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyAnpm1rcRiJKz1cHfzEEwyrHpeLDMu-pIw",
+        authDomain: "new-pos-system-cd358.firebaseapp.com",
+        projectId: "new-pos-system-cd358",
+        storageBucket: "new-pos-system-cd358.firebasestorage.app",
+        messagingSenderId: "850496462463",
+        appId: "1:850496462463:web:dce467c5ae49792b3d694a"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const OWNER_PIN = "515705";
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    let currentTask = ""; 
+    let deleteTarget = null;
+
+    // --- PIN Modal Controls ---
+    function openPinModal(task, target = null) {
+        currentTask = task;
+        deleteTarget = target;
+        document.getElementById('pinModal').style.display = 'flex';
+        document.getElementById('pinInput').value = "";
+        document.getElementById('pinInput').focus();
+    }
+    function closeModal() { document.getElementById('pinModal').style.display = 'none'; }
+
+    function checkPin() {
+        if(document.getElementById('pinInput').value === OWNER_PIN) {
+            if(currentTask === 'dashboard') {
+                document.getElementById('ownerPanel').style.display = 'block';
+                document.getElementById('secureHistoryArea').style.display = 'block';
+                document.getElementById('adminEntryBtn').style.display = 'none';
+            } else if(currentTask === 'expense') {
+                showExpenseTab();
+            } else if(currentTask === 'delete') {
+                db.collection(deleteTarget.coll).doc(deleteTarget.id).delete();
+            }
+            closeModal();
+        } else { alert("PIN မှားယွင်းပါသည်"); }
+    }
+
+    // --- Tab Management ---
+    function showExpenseTab() {
+        document.getElementById('posSection').classList.add('hidden');
+        document.getElementById('expenseSection').classList.remove('hidden');
+        document.getElementById('posTab').classList.remove('active');
+        document.getElementById('expTab').classList.add('active');
+    }
+    function switchTab(tab) {
+        if(tab === 'pos') {
+            document.getElementById('posSection').classList.remove('hidden');
+            document.getElementById('expenseSection').classList.add('hidden');
+            document.getElementById('posTab').classList.add('active');
+            document.getElementById('expTab').classList.remove('active');
+        }
+    }
+    function closeDashboard() {
+        document.getElementById('ownerPanel').style.display = 'none';
+        document.getElementById('secureHistoryArea').style.display = 'none';
+        document.getElementById('adminEntryBtn').style.display = 'block';
+    }
+
+    // --- SC Rate Cloud Logic ---
+    function initSCRate() {
+        // Cloud ပေါ်က SC Rate ကို အချိန်နဲ့တပြေးညီ နားထောင်မယ်
+        db.collection("settings").doc("scRateData").onSnapshot(doc => {
+            if (doc.exists) {
+                document.getElementById('scRate').value = doc.data().value;
+                updateCost();
+            } else {
+                document.getElementById('scRate').value = "115";
+            }
+        });
+    }
+
+    async function saveAndCalc() {
+        const newRate = document.getElementById('scRate').value;
+        updateCost();
+        // Cloud ပေါ်ကို တန်းသိမ်းမယ်
+        await db.collection("settings").doc("scRateData").set({
+            value: newRate,
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    }
+
+    function toggleFields() {
+        const isMLBB = document.getElementById('mainType').value === 'MLBB';
+        document.getElementById('mlbbGroup').classList.toggle('hidden', !isMLBB);
+        document.getElementById('transferGroup').classList.toggle('hidden', isMLBB);
+        updateCost();
+    }
+    function updateCost() {
+        if(document.getElementById('mainType').value === 'MLBB') {
+            const sc = parseFloat(document.getElementById('diaPack').selectedOptions[0].getAttribute('data-sc')) || 0;
+            const rate = parseFloat(document.getElementById('scRate').value) || 0;
+            document.getElementById('cost').value = Math.round(sc * rate);
+        }
+    }
+
+    // --- Firebase Core Functions ---
+    function syncLockStatus() {
+        db.collection("settings").doc("appState").onSnapshot(doc => {
+            if(doc.exists) document.getElementById('lockOverlay').style.display = doc.data().isLocked ? 'flex' : 'none';
+        });
+    }
+    async function updateCloudLock(state) {
+        await db.collection("settings").doc("appState").set({ isLocked: state });
+    }
+
+    async function saveData() {
+        const sale = parseFloat(document.getElementById('sale').value) || 0;
+        const cost = parseFloat(document.getElementById('cost').value) || 0;
+        const uName = document.getElementById('playerId').value || "No Name";
+        const desc = (document.getElementById('mainType').value === 'MLBB') ? document.getElementById('diaPack').value : document.getElementById('bankName').value + " " + document.getElementById('transferAction').value;
+        await db.collection("sales").add({
+            description: desc, userName: uName, cost, salePrice: sale, profit: sale - cost,
+            dateKey: todayStr, timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        document.getElementById('sale').value = ""; document.getElementById('playerId').value = "";
+    }
+
+    async function saveExpense() {
+        const amt = parseFloat(document.getElementById('expAmount').value) || 0;
+        const note = document.getElementById('expNote').value;
+        await db.collection("expenses").add({ amount: amt, note: note, dateKey: todayStr, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+        document.getElementById('expAmount').value = ""; document.getElementById('expNote').value = "";
+        switchTab('pos');
+    }
+
+    function loadData() {
+        db.collection("sales").orderBy("timestamp", "desc").onSnapshot(sSnap => {
+            db.collection("expenses").orderBy("timestamp", "desc").onSnapshot(eSnap => {
+                const groups = {};
+                let yDaySale = 0, yDayProfit = 0, yDayExp = 0;
+                sSnap.forEach(doc => {
+                    const d = doc.data();
+                    if(!groups[d.dateKey]) groups[d.dateKey] = { s: [], e: [], p: 0 };
+                    groups[d.dateKey].s.push({ ...d, id: doc.id });
+                    groups[d.dateKey].p += d.profit;
+                    if(d.dateKey === todayStr) { yDaySale += d.salePrice; yDayProfit += d.profit; }
+                });
+                eSnap.forEach(doc => {
+                    const d = doc.data();
+                    if(!groups[d.dateKey]) groups[d.dateKey] = { s: [], e: [], p: 0 };
+                    groups[d.dateKey].e.push({ ...d, id: doc.id });
+                    groups[d.dateKey].p -= d.amount;
+                    if(d.dateKey === todayStr) yDayExp += d.amount;
+                });
+                document.getElementById('totalSale').innerText = yDaySale.toLocaleString();
+                document.getElementById('totalProfit').innerText = yDayProfit.toLocaleString();
+                document.getElementById('totalExp').innerText = yDayExp.toLocaleString();
+                document.getElementById('netProfit').innerText = (yDayProfit - yDayExp).toLocaleString() + " K";
+                renderCards(groups);
+            });
+        });
+    }
+
+    function renderCards(groups) {
+        let html = "";
+        Object.keys(groups).sort().reverse().forEach(date => {
+            const g = groups[date];
+            html += `
+                <div class="history-card">
+                    <div class="date-header" onclick="document.getElementById('d-${date}').style.display=(document.getElementById('d-${date}').style.display=='block'?'none':'block')">
+                        <b>${date}</b>
+                        <span style="color:var(--transfer)">${g.p.toLocaleString()} K</span>
+                    </div>
+                    <div class="detail-box" id="d-${date}">
+                        ${g.s.map(i => `<div class="detail-item"><span>${i.description} (${i.userName})</span><b>+${i.profit.toLocaleString()} <span class="material-icons del-icon" onclick="openPinModal('delete',{coll:'sales',id:'${i.id}'})">delete_outline</span></b></div>`).join('')}
+                        ${g.e.map(i => `<div class="detail-item" style="color:var(--danger)"><span>[Exp] ${i.note}</span><b>-${i.amount.toLocaleString()} <span class="material-icons del-icon" onclick="openPinModal('delete',{coll:'expenses',id:'${i.id}'})">delete_outline</span></b></div>`).join('')}
+                    </div>
+                </div>`;
+        });
+        document.getElementById('smartHistory').innerHTML = html;
+    }
+
+    initSCRate(); syncLockStatus(); loadData();
+</script>
+</body>
+</html>
